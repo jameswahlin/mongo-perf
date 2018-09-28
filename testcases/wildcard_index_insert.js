@@ -2,26 +2,6 @@ if ((typeof tests === "undefined" ? "undefined" : typeof(tests)) != "object") {
     tests = [];
 }
 
-/*
- * Inserts value at the location specified by path (using dot notation) in object.
- * If there's a common non-object field name this function overwrites the previous values.
- */
-function setDottedFieldToValue(object, path, value) {
-    if (typeof path === "string") {
-        var fields = path.split(".");
-        if (fields.length == 1) {
-            object[path] = value;
-        } else {
-            if (typeof(object[fields[0]]) !== "object") {
-                object[fields[0]] = {};
-            }
-            setDottedFieldToValue(
-                object[fields[0]], path.slice(fields[0].length + 1, path.length), value);
-        }
-    }
-    return object;
-}
-
 /**
  * Creates test cases and adds them to the global testing array.
  *
@@ -38,18 +18,10 @@ function setDottedFieldToValue(object, path, value) {
 function addTest(options) {
     tests.push({
         name: options.type + ".WildCardIndex." + options.name,
-        tags: ["wildcard", "indexed"].concat(options.tags),
+        tags: ["wildcard", "indexed", ">=4.1.3"].concat(options.tags),
         pre: options.pre,
         ops: options.ops
     });
-}
-
-function getNFieldNames(n) {
-    var fieldNames = [];
-    for (var i = 0; i < n; i++) {
-        fieldNames.push("field-" + i);
-    }
-    return fieldNames;
 }
 
 /*
