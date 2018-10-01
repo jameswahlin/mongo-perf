@@ -18,7 +18,7 @@ if ((typeof tests === "undefined" ? "undefined" : typeof(tests)) != "object") {
 function addTest(options) {
     tests.push({
         name: options.type + ".WildCardIndex." + options.name,
-        tags: ["wildcard", "indexed", ">=4.1.3"].concat(options.tags),
+        tags: ["wildcard_write", "indexed", ">=4.1.3"].concat(options.tags),
         pre: options.pre,
         ops: options.ops
     });
@@ -173,9 +173,7 @@ function getSetupFunctionWithWildCardIndex(fieldsToIndex) {
     };
 }
 
-var kInsertTags = ["insert"];
-
-// TODO: SERVER-36214 make read-path tests which include compound & range queries.
+var kInsertTags = ["wildcard_insert"];
 
 /*
  * Make a test that inserts doc.

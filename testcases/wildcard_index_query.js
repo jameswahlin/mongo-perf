@@ -14,111 +14,86 @@ if ((typeof tests === "undefined" ? "undefined" : typeof(tests)) != "object") {
 function addReadTest(options) {
     tests.push({
         name: "Queries.WildcardIndex." + options.name,
-        tags: ["wildcard", "query", "indexed", ">=4.1.3"].concat(options.tags),
+        tags: ["wildcard_read", "indexed", ">=4.1.3"].concat(options.tags),
         pre: options.pre,
         ops: options.ops
     });
 }
 
-/**
- * Returns an array of 'nFields' strings, each containing a unique field name, prefixed by a dotted
- * path of 'depth' length.
- */
-function getNFieldNamesAtGivenDepth(nFields, depth) {
-    var pathPrefix = "";
-
-    for (var i = 0; i < depth; ++i) {
-        if (i > 0) {
-            pathPrefix += ".";
-        }
-
-        pathPrefix += ("subObj-" + i);
+function populateCollection(docGenerator, collection, count) {
+    for (var i = 0; i < count; ++i) {
+        collection.insert(docGenerator(i));
     }
-
-    var fieldNames = getNFieldNames(nFields);
-    for (var j = 0; j < fieldNames.length; ++j) {
-        fieldNames[j] = pathPrefix + "." + fieldNames[j];
-    }
-
-    return fieldNames;
 }
 
 /**
- * Inserts 'documentCount' documents, each with the fields listed in 'fieldList' into the test
- * collection. The value for each field is an integer that is unique to a given document. If a field
- * contains a dotted path, it will be expanded to its corresponding object.
+ * Returns a function that generates a document with the fields listed in 'fieldList'. The value for
+ * each field is an integer that is unique to a given document. If a field contains a dotted path,
+ * it will be expanded to its corresponding object.
  *
  * Examples:
- * Input: fieldList: ["abc", "def"], documentCount: 1
- * Output: {abc: 0, def: 0}
+ * Input: fieldList: ["abc", "def"], seed: 1
+ * Output: {abc: 1, def: 1}
  *
- * Input: fieldList: ["foo.bar"], documentCount: 1
- * Output: {abc: {def: 0}}
+ * Input: fieldList: ["foo.bar"], seed: 2
+ * Output: {foo: {bar: 2}}
  */
-function getMultiFieldPathToIntegerDocumentGenerator(fieldList, documentCount) {
+function getMultiFieldPathToIntegerDocumentGenerator(fieldList) {
     assert(fieldList.length > 0);
-    return function(collection) {
-        for (var i = 0; i < documentCount; ++i) {
-            var doc = {};
-            for (var j = 0; j < fieldList.length; ++j) {
-                setDottedFieldToValue(doc, fieldList[j], i);
-            }
-            collection.insert(doc);
+    return function(seed) {
+        var doc = {};
+        for (var j = 0; j < fieldList.length; ++j) {
+            setDottedFieldToValue(doc, fieldList[j], seed);
         }
+        return doc;
     };
 }
 
 /**
- * Inserts 'documentCount' documents, each with the fields listed in 'fieldList' into the test
- * collection. The value for each field is an array of integers, each with a unique set of
- * 'arraySize' numbers.
+ * Returns a function that generates a document with the fields listed in 'fieldList'. The value for
+ * each field is an array of integers, each with a unique set of 'arraySize' numbers.
  *
  * Example:
- * Input: fieldList: ["abc", "def"], documentCount: 1, arraySize: 4
- * Output: {abc: [-2, -1, 0, 1]}
+ * Input: fieldList: ["abc", "def"], arraySize: 4, seed: 0
+ * Output: {abc: [-2, -1, 0, 1], def: [-2, -1, 0, 1]}
  */
-function getTopLevelArrayMultiFieldDocumentGenerator(fieldList, documentCount, arraySize) {
+function getTopLevelArrayMultiFieldDocumentGenerator(fieldList, arraySize) {
     assert(fieldList.length > 0);
-    return function(collection) {
-        for (var i = 0; i < documentCount; ++i) {
-            var valueList = [];
-            var value = i - Math.ceil(arraySize / 2);
-            for (var j = 0; j < arraySize; ++j) {
-                valueList.push(value++);
-            }
-
-            var doc = {};
-            for (var k = 0; k < fieldList.length; ++k) {
-                doc[fieldList[k]] = valueList;
-            }
-            collection.insert(doc);
+    return function(seed) {
+        var valueList = [];
+        var value = seed - Math.ceil(arraySize / 2);
+        for (var j = 0; j < arraySize; ++j) {
+            valueList.push(value++);
         }
+
+        var doc = {};
+        for (var k = 0; k < fieldList.length; ++k) {
+            doc[fieldList[k]] = valueList;
+        }
+        return doc;
     };
 }
 
 /**
- * Inserts 'documentCount' documents, each with the single 'fieldList' field into the test
- * collection. The value for each field is an array of integers, each with 'arraySize' numbers.
+ * Returns a function that generates a document with a single 'fieldList' field. The value for each
+ * field is an array of integers, each with 'arraySize' numbers.
  *
  * Example:
- * Input: fieldList: ["abc", "def"], documentCount: 2, arraySize: 3
- * Output: {abc: [0,1,2]}, {def: [0,1,2]}
+ * Input: fieldList: ["abc", "def"], arraySize: 3, seed: 3
+ * Output: {def: [0,1,2]}
  */
-function getTopLevelArraySingleFieldPerDocumentGenerator(fieldList, documentCount, arraySize) {
+function getTopLevelArraySingleFieldPerDocumentGenerator(fieldList, arraySize) {
     assert(fieldList.length > 0);
-    return function(collection) {
-        var currentFieldIndex = 0;
-        for (var i = 0; i < documentCount; ++i) {
-            var value = [];
-            for (var j = 0; j < arraySize; ++j) {
-                value.push(j);
-            }
-
-            var doc = {};
-            doc[fieldList[currentFieldIndex]] = value;
-            collection.insert(doc);
-            currentFieldIndex = (currentFieldIndex + 1) % fieldList.length;
+    return function(seed) {
+        var value = [];
+        for (var j = 0; j < arraySize; ++j) {
+            value.push(j);
         }
+
+        var doc = {};
+        var currentFieldIndex = seed % fieldList.length;
+        doc[fieldList[currentFieldIndex]] = value;
+        return doc;
     };
 }
 
@@ -129,7 +104,7 @@ function getTopLevelArraySingleFieldPerDocumentGenerator(fieldList, documentCoun
 function getSetupFunctionForTargetedIndex(fieldsToIndex, documentGenerator, documentCount) {
     return function(collection) {
         collection.drop();
-        documentGenerator(collection, documentCount);
+        populateCollection(documentGenerator, collection, documentCount);
 
         for (var i = 0; i < fieldsToIndex.length; ++i) {
             var indexSpec = {};
@@ -145,7 +120,7 @@ function getSetupFunctionForTargetedIndex(fieldsToIndex, documentGenerator, docu
 function getSetupFunctionWithWildcardIndex(fieldsToIndex, documentGenerator, documentCount) {
     return function(collection) {
         collection.drop();
-        documentGenerator(collection, documentCount);
+        populateCollection(documentGenerator, collection, documentCount);
 
         var proj = {};
         for (var i = 0; i < fieldsToIndex.length; ++i) {
@@ -273,7 +248,15 @@ var fieldList = [];
 
 fieldList = getNFieldNames(100);
 makeStandaloneReadTest("PointQueryAgainstCollectionWith100MultikeyPaths", fieldList,
-      getPointQueryList([fieldList[0]], 10 /* max value */), getTopLevelArraySingleFieldPerDocumentGenerator(fieldList, numDocuments, 10 /*array size */));
+      getPointQueryList([fieldList[0]], 10 /* max value */), getTopLevelArraySingleFieldPerDocumentGenerator(fieldList, 10 /*array size */), numDocuments);
+
+//
+// Standalone test which performs a point query against a single non-existent field.
+//
+
+fieldList = getNFieldNames(1);
+makeStandaloneReadTest("PointQueryOnSingleNonExistentField", ["non-existent"],
+      getPointQueryList(["non-existent"], numDocuments), getMultiFieldPathToIntegerDocumentGenerator(fieldList), numDocuments);
 
 //
 // Point query against a single indexed field.
@@ -281,119 +264,72 @@ makeStandaloneReadTest("PointQueryAgainstCollectionWith100MultikeyPaths", fieldL
 
 fieldList = getNFieldNames(1);
 makeComparisonReadTest("PointQueryOnSingleField", fieldList,
-      getPointQueryList(fieldList, numDocuments), getMultiFieldPathToIntegerDocumentGenerator(fieldList, numDocuments));
+      getPointQueryList(fieldList, numDocuments), getMultiFieldPathToIntegerDocumentGenerator(fieldList), numDocuments);
 
 fieldList = getNFieldNames(10);
 makeComparisonReadTest("PointQueryOnMultipleFields",
                        fieldList,
                        getPointQueryList(fieldList, numDocuments),
-                       getMultiFieldPathToIntegerDocumentGenerator(fieldList, numDocuments));
+                       getMultiFieldPathToIntegerDocumentGenerator(fieldList),
+                       numDocuments);
 
 fieldList = getNFieldNames(1);
-makeComparisonReadTest(
-    "PointQueryOnSingleArrayField",
-    fieldList,
-    getPointQueryList(fieldList, numDocuments),
-    getTopLevelArrayMultiFieldDocumentGenerator(fieldList, numDocuments, defaultArraySize));
+makeComparisonReadTest("PointQueryOnSingleArrayField",
+                       fieldList,
+                       getPointQueryList(fieldList, numDocuments),
+                       getTopLevelArrayMultiFieldDocumentGenerator(fieldList, defaultArraySize),
+                       numDocuments);
 
 fieldList = getNFieldNames(10);
-makeComparisonReadTest(
-    "PointQueryOnMultipleArrayFields",
-    fieldList,
-    getPointQueryList(fieldList, numDocuments),
-    getTopLevelArrayMultiFieldDocumentGenerator(fieldList, numDocuments, defaultArraySize));
-
-fieldList = getNFieldNamesAtGivenDepth(1, 10);
-makeComparisonReadTest("PointQueryOnSingleDeeplyNestedField",
+makeComparisonReadTest("PointQueryOnMultipleArrayFields",
                        fieldList,
                        getPointQueryList(fieldList, numDocuments),
-                       getMultiFieldPathToIntegerDocumentGenerator(fieldList, numDocuments));
-
-fieldList = getNFieldNamesAtGivenDepth(10, 10);
-makeComparisonReadTest("PointQueryOnMultipleDeeplyNestedFields",
-                       fieldList,
-                       getPointQueryList(fieldList, numDocuments),
-                       getMultiFieldPathToIntegerDocumentGenerator(fieldList, numDocuments));
+                       getTopLevelArrayMultiFieldDocumentGenerator(fieldList, defaultArraySize),
+                       numDocuments);
 
 //
-// Range query against a single field.
+// Range query.
 //
 
 fieldList = getNFieldNames(1);
 makeComparisonReadTest("RangeQueryOnSingleField", fieldList,
-      getRangeQueryList(fieldList, numDocuments), getMultiFieldPathToIntegerDocumentGenerator(fieldList, numDocuments));
+      getRangeQueryList(fieldList, numDocuments), getMultiFieldPathToIntegerDocumentGenerator(fieldList), numDocuments);
 
 fieldList = getNFieldNames(10);
 makeComparisonReadTest("RangeQueryOnMultipleFields",
                        fieldList,
                        getRangeQueryList(fieldList, numDocuments),
-                       getMultiFieldPathToIntegerDocumentGenerator(fieldList, numDocuments));
+                       getMultiFieldPathToIntegerDocumentGenerator(fieldList),
+                       numDocuments);
 
 fieldList = getNFieldNames(1);
-makeComparisonReadTest(
-    "RangeQueryOnSingleArrayField",
-    fieldList,
-    getRangeQueryList(fieldList, numDocuments),
-    getTopLevelArrayMultiFieldDocumentGenerator(fieldList, numDocuments, defaultArraySize));
-
-fieldList = getNFieldNames(10);
-makeComparisonReadTest(
-    "RangeQueryOnMultipleArrayFields",
-    fieldList,
-    getRangeQueryList(fieldList, numDocuments),
-    getTopLevelArrayMultiFieldDocumentGenerator(fieldList, numDocuments, defaultArraySize));
-
-fieldList = getNFieldNamesAtGivenDepth(1, 10);
-makeComparisonReadTest("RangeQueryOnSingleDeeplyNestedField",
+makeComparisonReadTest("RangeQueryOnSingleArrayField",
                        fieldList,
                        getRangeQueryList(fieldList, numDocuments),
-                       getMultiFieldPathToIntegerDocumentGenerator(fieldList, numDocuments));
-
-fieldList = getNFieldNamesAtGivenDepth(10, 10);
-makeComparisonReadTest("RangeQueryOnMultipleDeeplyNestedFields",
-                       fieldList,
-                       getRangeQueryList(fieldList, numDocuments),
-                       getMultiFieldPathToIntegerDocumentGenerator(fieldList, numDocuments));
+                       getTopLevelArrayMultiFieldDocumentGenerator(fieldList, defaultArraySize),
+                       numDocuments);
 
 //
-// Range query against a single field with indexed sort.
+// Range query with indexed sort.
 //
 
 fieldList = getNFieldNames(1);
 makeComparisonReadTest("RangeSortQueryOnSingleField", fieldList,
-      getRangeSortQueryList(fieldList, numDocuments), getMultiFieldPathToIntegerDocumentGenerator(fieldList, numDocuments));
+      getRangeSortQueryList(fieldList, numDocuments), getMultiFieldPathToIntegerDocumentGenerator(fieldList), numDocuments);
 
 fieldList = getNFieldNames(10);
 makeComparisonReadTest("RangeSortQueryOnMultipleFields",
                        fieldList,
                        getRangeSortQueryList(fieldList, numDocuments),
-                       getMultiFieldPathToIntegerDocumentGenerator(fieldList, numDocuments));
+                       getMultiFieldPathToIntegerDocumentGenerator(fieldList),
+                       numDocuments);
 
 fieldList = getNFieldNames(1);
-makeComparisonReadTest(
-    "RangeSortQueryOnSingleArrayField",
-    fieldList,
-    getRangeSortQueryList(fieldList, numDocuments),
-    getTopLevelArrayMultiFieldDocumentGenerator(fieldList, numDocuments, defaultArraySize));
-
-fieldList = getNFieldNames(10);
-makeComparisonReadTest(
-    "RangeSortQueryOnMultipleArrayFields",
-    fieldList,
-    getRangeSortQueryList(fieldList, numDocuments),
-    getTopLevelArrayMultiFieldDocumentGenerator(fieldList, numDocuments, defaultArraySize));
-
-fieldList = getNFieldNamesAtGivenDepth(1, 10);
-makeComparisonReadTest("RangeSortQueryOnSingleDeeplyNestedField",
+makeComparisonReadTest("RangeSortQueryOnSingleArrayField",
                        fieldList,
                        getRangeSortQueryList(fieldList, numDocuments),
-                       getMultiFieldPathToIntegerDocumentGenerator(fieldList, numDocuments));
-
-fieldList = getNFieldNamesAtGivenDepth(10, 10);
-makeComparisonReadTest("RangeSortQueryOnMultipleDeeplyNestedFields",
-                       fieldList,
-                       getRangeSortQueryList(fieldList, numDocuments),
-                       getMultiFieldPathToIntegerDocumentGenerator(fieldList, numDocuments));
+                       getTopLevelArrayMultiFieldDocumentGenerator(fieldList, defaultArraySize),
+                       numDocuments);
 
 //
 // Point query on 2 indexed fields.
@@ -401,25 +337,11 @@ makeComparisonReadTest("RangeSortQueryOnMultipleDeeplyNestedFields",
 
 fieldList = getNFieldNames(2);
 makeComparisonReadTest("PointQueryOnTwoFields", fieldList,
-      getTwoPointQueryList(fieldList, numDocuments), getMultiFieldPathToIntegerDocumentGenerator(fieldList, numDocuments));
+      getTwoPointQueryList(fieldList, numDocuments), getMultiFieldPathToIntegerDocumentGenerator(fieldList), numDocuments);
 
 fieldList = getNFieldNames(2);
-makeComparisonReadTest(
-    "PointQueryOnTwoArrayFields",
-    fieldList,
-    getTwoPointQueryList(fieldList, numDocuments),
-    getTopLevelArrayMultiFieldDocumentGenerator(fieldList, numDocuments, defaultArraySize));
-
-fieldList = getNFieldNamesAtGivenDepth(2, 10);
-makeComparisonReadTest("PointQueryOnTwoDeeplyNestedFields",
+makeComparisonReadTest("PointQueryOnTwoArrayFields",
                        fieldList,
                        getTwoPointQueryList(fieldList, numDocuments),
-                       getMultiFieldPathToIntegerDocumentGenerator(fieldList, numDocuments));
-
-//
-// Point query against a single non-existent field.
-//
-
-fieldList = getNFieldNames(1);
-makeComparisonReadTest("PointQueryOnSingleNonExistentField", ["non-existent"],
-      getPointQueryList(["non-existent"], numDocuments), getMultiFieldPathToIntegerDocumentGenerator(fieldList, numDocuments));
+                       getTopLevelArrayMultiFieldDocumentGenerator(fieldList, defaultArraySize),
+                       numDocuments);
